@@ -3,6 +3,8 @@ import cors from "cors";
 import dotenv from "dotenv";
 import axios from "axios";
 import qs from "qs";
+import path from "path";
+import { fileURLToPath } from "url";
 
 // Load .env
 dotenv.config();
@@ -10,6 +12,19 @@ dotenv.config();
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+/* =====================================================
+     STATIC FILES FOR TIKTOK VERIFICATION
+     Folder: /public
+     Example URL:
+     https://your-backend.onrender.com/tiktok-verification.txt
+===================================================== */
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Serve files placed inside /public
+app.use(express.static(path.join(__dirname, "public")));
 
 // Root route
 app.get("/", (req, res) => {
@@ -71,7 +86,7 @@ app.get("/auth/tiktok/callback", async (req, res) => {
       console.error("❌ No code returned from TikTok");
       return res.redirect(
         process.env.FRONTEND_DEEP_LINK_ERROR ||
-          "watchtower://oauth-failed?tiktok=1"
+        "watchtower://oauth-failed?tiktok=1"
       );
     }
 
@@ -105,7 +120,7 @@ app.get("/auth/tiktok/callback", async (req, res) => {
     console.error("❌ TikTok OAuth Error:", err?.response?.data || err);
     return res.redirect(
       process.env.FRONTEND_DEEP_LINK_ERROR ||
-        "watchtower://oauth-failed?tiktok=1"
+      "watchtower://oauth-failed?tiktok=1"
     );
   }
 });
