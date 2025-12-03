@@ -13,33 +13,44 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-/* =====================================================
-     STATIC FILES FOR TIKTOK VERIFICATION
-     Folder: /public
-     Example URL:
-     https://your-backend.onrender.com/tiktok-verification.txt
-===================================================== */
-
+/* ================================================
+      FILEPATH HELPERS
+================================================ */
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Serve files placed inside /public
+/* ================================================
+      ✅ REQUIRED: TikTok Verification Route
+      TikTok requests EXACTLY:
+      /.well-known/tiktok.txt
+================================================ */
+app.get("/.well-known/tiktok.txt", (req, res) => {
+  res.setHeader("Content-Type", "text/plain");
+  res.send(
+    "tiktok-developers-site-verification=ILEsVC0ujBzYh7df4cILTNNssOiUCLI1"
+  );
+});
+
+/* ================================================
+      Static Files (optional)
+================================================ */
 app.use(express.static(path.join(__dirname, "public")));
 
-// Root route
+/* ================================================
+      ROOT CHECK
+================================================ */
 app.get("/", (req, res) => {
   res.send("WatchTower Backend Running");
 });
 
-/* =====================================================
-     TEMP STORAGE (REPLACE WITH DB LATER)
-===================================================== */
-
+/* ================================================
+      TEMP TIKTOK TOKEN STORAGE
+================================================ */
 let tiktokAuthStore = {
   accessToken: null,
   refreshToken: null,
   openId: null,
-  expiresAt: null, // timestamp (ms)
+  expiresAt: null,
 };
 
 function saveTikTokAuth(tokenData) {
@@ -50,14 +61,12 @@ function saveTikTokAuth(tokenData) {
     openId: tokenData.open_id,
     expiresAt: now + tokenData.expires_in * 1000,
   };
-  console.log("✅ TikTok tokens saved for open_id:", tokenData.open_id);
+  console.log("✅ TikTok tokens saved for:", tokenData.open_id);
 }
 
-/* =====================================================
-     START TIKTOK OAUTH
-     GET /auth/tiktok
-===================================================== */
-
+/* ================================================
+      START TIKTOK OAUTH
+================================================ */
 app.get("/auth/tiktok", (req, res) => {
   const params = new URLSearchParams({
     client_key: process.env.TIKTOK_CLIENT_KEY,
@@ -68,29 +77,24 @@ app.get("/auth/tiktok", (req, res) => {
   });
 
   const url = `https://www.tiktok.com/v2/auth/authorize/?${params.toString()}`;
-  console.log("🔗 Redirecting to TikTok Auth:", url);
+  console.log("🔗 TikTok Auth URL:", url);
 
   return res.redirect(url);
 });
 
-/* =====================================================
-     TIKTOK CALLBACK
-     GET /auth/tiktok/callback
-===================================================== */
-
+/* ================================================
+      TIKTOK CALLBACK
+================================================ */
 app.get("/auth/tiktok/callback", async (req, res) => {
   try {
     const { code } = req.query;
 
     if (!code) {
-      console.error("❌ No code returned from TikTok");
-      return res.redirect(
-        process.env.FRONTEND_DEEP_LINK_ERROR ||
-        "watchtower://oauth-failed?tiktok=1"
-      );
+      console.error("❌ No code returned from TikTok.");
+      return res.redirect("watchtower://oauth-failed?tiktok=1");
     }
 
-    // Exchange code → access token
+    // Exchange code → tokens
     const tokenResponse = await axios.post(
       "https://open.tiktokapis.com/v2/oauth/token/",
       qs.stringify({
@@ -106,47 +110,34 @@ app.get("/auth/tiktok/callback", async (req, res) => {
     );
 
     const tokenData = tokenResponse.data;
+    console.log("🎉 TikTok OAuth Token Response:", tokenData);
 
-    console.log("🎉 TikTok OAuth Success:", tokenData);
-
-    // Save tokens into memory
     saveTikTokAuth(tokenData);
 
-    // Redirect user back to the WatchTower app
-    return res.redirect(
-      process.env.FRONTEND_DEEP_LINK || "watchtower://oauth-success?tiktok=1"
-    );
+    return res.redirect("watchtower://oauth-success?tiktok=1");
   } catch (err) {
     console.error("❌ TikTok OAuth Error:", err?.response?.data || err);
-    return res.redirect(
-      process.env.FRONTEND_DEEP_LINK_ERROR ||
-      "watchtower://oauth-failed?tiktok=1"
-    );
+    return res.redirect("watchtower://oauth-failed?tiktok=1");
   }
 });
 
-/* =====================================================
-     HELPER: Get valid TikTok token
-===================================================== */
-
+/* ================================================
+      VALIDATE TOKEN
+================================================ */
 async function getTikTokAccessToken() {
   if (!tiktokAuthStore.accessToken) return null;
 
-  const now = Date.now();
-
-  // TODO: implement refresh token flow
-  if (tiktokAuthStore.expiresAt > now) {
+  if (Date.now() < tiktokAuthStore.expiresAt) {
     return tiktokAuthStore.accessToken;
   }
 
+  // TODO: add refresh logic later
   return tiktokAuthStore.accessToken;
 }
 
-/* =====================================================
-     DEMO STATS ENDPOINT
-     GET /api/tiktok/stats
-===================================================== */
-
+/* ================================================
+      DEMO STATS ENDPOINT
+================================================ */
 app.get("/api/tiktok/stats", async (req, res) => {
   try {
     const token = await getTikTokAccessToken();
@@ -155,23 +146,21 @@ app.get("/api/tiktok/stats", async (req, res) => {
       return res.status(401).json({ error: "TikTok not connected yet." });
     }
 
-    // TODO: Call TikTok API.
-    // For now: return mock data so your app works.
+    // (Replace with real TikTok API calls later)
     return res.json({
       username: "@tiktok_user",
       followers: 12600,
       views7d: 58300,
     });
   } catch (err) {
-    console.error("❌ Error getting TikTok stats:", err);
-    return res.status(500).json({ error: "Failed to fetch TikTok stats." });
+    console.error("❌ Error fetching TikTok stats:", err);
+    return res.status(500).json({ error: "Failed to fetch stats." });
   }
 });
 
-/* =====================================================
-     START SERVER
-===================================================== */
-
+/* ================================================
+      START SERVER
+================================================ */
 const PORT = process.env.PORT || 5005;
 app.listen(PORT, () =>
   console.log(`🚀 WatchTower Backend running on PORT ${PORT}`)
